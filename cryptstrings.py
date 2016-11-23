@@ -1,10 +1,12 @@
 #!/usr/bin/env python
+# Author: Uros orozel
+# Company: Rackspace
 """
 Usage:
   cryptstrings listkeys
   cryptstrings createkeys [--key-name=<key_name_suffix>] [--key-size=1024] [--keys-path=<keys_path>]
-  cryptstrings encrypt <filename> <keyname> <output_file> [--public-key=<public-key.pem>]
-  cryptstrings decrypt <filename> <keyname> <output_file> [--private-key=<private-key.pem>]
+  cryptstrings encrypt <input_file> <keyname> <output_file> [--public-key=<public-key.pem>]
+  cryptstrings decrypt <input_file> <keyname> <output_file> [--private-key=<private-key.pem>]
   cryptstrings -h | --help
   cryptstrings --version
 
@@ -16,32 +18,32 @@ Options:
 """
 http://nvie.com/posts/modifying-deeply-nested-structures/
 https://gist.github.com/nvie/f304caf3b4f1ca4c3884
+https://docs.launchkey.com/developer/encryption/python/python-encryption.html
 """
 
 import os
 import sys
+import os.path
 import json
 import yaml
 import glob
 from base64 import b64decode
 from distutils.util import strtobool
-# import yaml
 from docopt import docopt
 from Crypto import Random
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 
-
-# Constants
+# Default values
 RSA_KEY_NAME = "cryptstrings"
 RSA_PRIVATE_KEY = "_private.pem"
 RSA_PUBLIC_KEY = "_public.pem"
 RSA_KEYS_PATH = ".cryptstrings"
-RSA_MAGIC = "MyRsa:"
+RSA_MAGIC = "RSA:"
 RSA_KEY_SIZE = 1024
 
-PUBLIC_KEY = os.path.join(RSA_KEYS_PATH, RSA_KEY_NAME + RSA_PUBLIC_KEY)
 PRIVATE_KEY = os.path.join(RSA_KEYS_PATH, RSA_KEY_NAME + RSA_PRIVATE_KEY)
+PUBLIC_KEY = os.path.join(RSA_KEYS_PATH, RSA_KEY_NAME + RSA_PUBLIC_KEY)
 
 
 def overwrite(file_name):
@@ -62,27 +64,22 @@ def overwrite(file_name):
 def list_keys():
     private = glob.glob(RSA_KEYS_PATH + "/*" + RSA_PRIVATE_KEY)
     public = glob.glob(RSA_KEYS_PATH + "/*" + RSA_PUBLIC_KEY)
-    print("\n### Private keys:")
+    print("\nPrivate keys:")
     for key in private:
-        print("key: %s" % key)
+        print(">>> %s" % key)
 
-    print("\n### Public keys:")
+    print("\nPublic keys:")
     for key in public:
-        print("key: %s" % key)
+        print(">>> %s" % key)
 
 
 def ensure_dir(directory):
-    print("Creating directory: %s" % directory)
+    print("Creating directory: %s\n" % directory)
     if not os.path.exists(directory):
         os.makedirs(directory, 0700)
 
 
 def write_key(file_name, file_contents, key_type, keys_path):
-    file_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), keys_path)
-
-    ensure_dir(file_path)
-
     if key_type == 'Private':
         file_name = file_name + RSA_PRIVATE_KEY
         print("Writing Private key: %s" % file_name)
@@ -91,7 +88,7 @@ def write_key(file_name, file_contents, key_type, keys_path):
         print("Writing Public key: %s" % file_name)
 
     full_filename = os.path.join(file_path, file_name)
-    print("Output to: %s" % full_filename)
+    print(">>> %s" % full_filename)
 
     if overwrite(full_filename):
         f = open(full_filename, 'w')
@@ -114,6 +111,25 @@ def create_keys(key_size=RSA_KEY_SIZE, key_name=RSA_KEY_NAME, keys_path=RSA_KEYS
     write_key(key_name, private_key, 'Private', keys_path)
 
 
+def check_file(file_path):
+    if os.path.exists(file_path):
+        return True
+    else:
+        print("File %s doesn't exist" % file_path)
+        sys.exit(1)
+
+
+def load_yaml(yaml_path):
+    try:
+        load = yaml.load(open(yaml_path, 'r').read())
+        return load
+    except yaml.YAMLError as exc:
+        print(exc)
+    except IOError as e:
+        print "I/O error({0}): {1} {2}".format(e.errno, e.strerror, yaml_path)
+        sys.exit(1)
+
+
 def process_string(attribute):
     if encrypt:
         if not attribute.startswith(RSA_MAGIC):
@@ -128,30 +144,18 @@ def process_string(attribute):
             attribute = decrypt_RSA(attribute)
             return attribute
 
-# https://docs.launchkey.com/developer/encryption/python/python-encryption.html
 
-
-def encrypt_RSA(message, public_key=PUBLIC_KEY):
-    '''
-    param: public_key_loc Path to public key
-    param: message String to be encrypted
-    return base64 encoded encrypted string
-    '''
+def encrypt_RSA(message):
+    public_key = PUBLIC_KEY
     key = open(public_key, "r").read()
     rsakey = RSA.importKey(key)
     rsakey = PKCS1_OAEP.new(rsakey)
     encrypted = rsakey.encrypt(message)
     return encrypted.encode('base64').replace('\n', '')
 
-# https://docs.launchkey.com/developer/encryption/python/python-encryption.html
 
-
-def decrypt_RSA(package, private_key=PRIVATE_KEY):
-    '''
-    param: public_key_loc Path to your private key
-    param: package String to be decrypted
-    return decrypted string
-    '''
+def decrypt_RSA(package):
+    private_key = PRIVATE_KEY
     key = open(private_key, "r").read()
     rsakey = RSA.importKey(key)
     rsakey = PKCS1_OAEP.new(rsakey)
@@ -176,46 +180,53 @@ def traverse_and_modify(obj, attribute, callback, key=None):
         return value
 
 if __name__ == '__main__':
-    arguments = docopt(__doc__, version='0.1.1rc')
-
+    arguments = docopt(__doc__, version='1.0.1rc')
     # sub command
     createkeys = arguments['createkeys']
-
-    # options
-    if arguments['--key-size']:
-        key_size = int(arguments['--key-size'])
-    else:
-        key_size = RSA_KEY_SIZE
-
-    if arguments['--key-name']:
-        key_name = arguments['--key-name']
-    else:
-        key_name = RSA_KEY_NAME
-    if arguments['--keys-path']:
-        keys_path = arguments['--keys-path']
-    else:
-        keys_path = RSA_KEYS_PATH
-
-    # sub command
     listkeys = arguments['listkeys']
     encrypt = arguments['encrypt']
     decrypt = arguments['decrypt']
 
     if encrypt or decrypt:
-        filename = arguments['<filename>']
+        input_file = arguments['<input_file>']
         keyname = arguments['<keyname>']
         output_file = arguments['<output_file>']
 
     if createkeys:
+        # options
+        if arguments['--key-size']:
+            key_size = int(arguments['--key-size'])
+        else:
+            key_size = RSA_KEY_SIZE
+
+        if arguments['--key-name']:
+            key_name = arguments['--key-name']
+        else:
+            key_name = RSA_KEY_NAME
+
+        if arguments['--keys-path']:
+            keys_path = arguments['--keys-path']
+        else:
+            keys_path = RSA_KEYS_PATH
+
+        file_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), keys_path)
+        ensure_dir(file_path)
         create_keys(key_size, key_name, keys_path)
 
     if encrypt:
-        json_data = yaml.load(open(filename, 'r').read())
+        if arguments['--public-key']:
+            PUBLIC_KEY = arguments['--public-key']
+        check_file(PUBLIC_KEY)
+        json_data = load_yaml(input_file)
         modified = traverse_and_modify(json_data, keyname, process_string)
         write_yaml(output_file, modified)
 
     if decrypt:
-        json_data = yaml.load(open(filename, 'r').read())
+        if arguments['--private-key']:
+            PRIVATE_KEY = arguments['--private-key']
+        check_file(PRIVATE_KEY)
+        json_data = load_yaml(input_file)
         modified = traverse_and_modify(json_data, keyname, process_string)
         write_yaml(output_file, modified)
 
