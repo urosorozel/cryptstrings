@@ -3,14 +3,19 @@
 Usage:
   cryptstrings listkeys
   cryptstrings createkeys [--key-name=<key_name_suffix>] [--key-size=1024] [--keys-path=<keys_path>]
-  cryptstrings encrypt <filename> <attribute> [--public-key=<public-key.pem>]
-  cryptstrings decrypt <filename> [--private-key=<private-key.pem>]
+  cryptstrings encrypt <filename> <keyname> <output_file> [--public-key=<public-key.pem>]
+  cryptstrings decrypt <filename> <keyname> <output_file> [--private-key=<private-key.pem>]
   cryptstrings -h | --help
   cryptstrings --version
 
 Options:
   -h --help     Show this screen.
   --version     Show version.
+"""
+
+"""
+http://nvie.com/posts/modifying-deeply-nested-structures/
+https://gist.github.com/nvie/f304caf3b4f1ca4c3884
 """
 
 import os
@@ -80,6 +85,9 @@ def write_key(file_name, file_contents, key_type, keys_path):
         f.close()
         os.chmod(full_filename, 0400)
 
+def write_yaml(filename, json):
+    with open( filename, 'w') as outfile:
+      yaml.dump(json, outfile, default_flow_style=False)
 
 def create_keys(key_size=RSA_KEY_SIZE, key_name=RSA_KEY_NAME, keys_path=RSA_KEYS_PATH):
     random_generator = Random.new().read
@@ -89,42 +97,19 @@ def create_keys(key_size=RSA_KEY_SIZE, key_name=RSA_KEY_NAME, keys_path=RSA_KEYS
     private_key = key.exportKey()
     write_key(key_name, private_key, 'Private', keys_path)
 
- # magic = "MyRSA"
- # if data[:len(magic)] != magic
 
-
-def process_string(attribute, command):
-    print("Att:%s" % attribute)
-    if command == "encrypt":
+def process_string(attribute):
+    if encrypt:
         if not attribute.startswith(RSA_MAGIC):
-            #v[:len(RSA_MAGIC)] != RSA_MAGIC:
             attribute = RSA_MAGIC + encrypt_RSA(attribute)
-            print("Would enc: %s" % attribute)
             return attribute
 
-    if command == "decrypt":
+    if decrypt:
         if attribute.startswith(RSA_MAGIC):
             attribute=attribute[len(RSA_MAGIC):]
             attribute=decrypt_RSA(attribute)
             return attribute
 
-def find_key1(json_input, lookup_key, command):
-    print("command: %s and lookup_key: %s" % (command,lookup_key))
-
-def find_key(json_input, lookup_key, command):
-    print("command: %s and lookup_key: %s" % (command,lookup_key))
-    if isinstance(json_input, dict):
-        for k, v in json_input.iteritems():
-            if k == lookup_key:
-                yield v
-                json_input[k]=process_string(v,command)
-            else:
-                for child_val in find_key(v, lookup_key):
-                    yield child_val
-    elif isinstance(json_input, list):
-        for item in json_input:
-            for item_val in find_key(item, lookup_key):
-                yield item_val
 
 # https://docs.launchkey.com/developer/encryption/python/python-encryption.html
 def encrypt_RSA(message,public_key=PUBLIC_KEY):
@@ -137,10 +122,10 @@ def encrypt_RSA(message,public_key=PUBLIC_KEY):
     rsakey = RSA.importKey(key)
     rsakey = PKCS1_OAEP.new(rsakey)
     encrypted = rsakey.encrypt(message)
-    return encrypted.encode('base64')
+    return encrypted.encode('base64').replace('\n', '')
+
 
 # https://docs.launchkey.com/developer/encryption/python/python-encryption.html
-
 
 def decrypt_RSA(package,private_key=PRIVATE_KEY):
     '''
@@ -155,21 +140,23 @@ def decrypt_RSA(package,private_key=PRIVATE_KEY):
     return decrypted
 
 
-class Dotable(dict):
+
+def traverse_and_modify(obj, attribute, callback, key=None):
+    if isinstance(obj, dict):
+        return {k: traverse_and_modify(v, attribute, callback, key=k) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [traverse_and_modify(elem, attribute, callback, key) for elem in obj]
+    else:
+        value = obj
+
+    if value is None:
+        return value
     
-    __getattr__ = dict.__getitem__
+    if attribute == key:
+        return callback(str(value))
+    else:
+        return value
 
-    def __init__(self, d):
-        self.update(**dict((k, self.parse(v)) for k, v in d.iteritems()))
-
-    @classmethod
-    def parse(cls, v):
-        if isinstance(v, dict):
-            return cls(v)
-        elif isinstance(v, list):
-            return [cls.parse(i) for i in v]
-        else:
-            return v
 
 
 
@@ -181,11 +168,17 @@ if __name__ == '__main__':
 
     # options
     if arguments['--key-size']:
-        key_size = int(arguments['--key-size']) || RSA_KEY_SIZE
+        key_size = int(arguments['--key-size']) 
+    else: key_size = RSA_KEY_SIZE
+
     if arguments['--key-name']:
-        key_name = arguments['--key-name'] || RSA_KEY_NAME
+        key_name = arguments['--key-name'] 
+    else: 
+        key_name = RSA_KEY_NAME
     if arguments['--keys-path']:
-        keys_path = arguments['--keys-path'] || RSA_KEYS_PATH
+        keys_path = arguments['--keys-path'] 
+    else: 
+        keys_path = RSA_KEYS_PATH
    
     # sub command
     encrypt =  arguments['encrypt']
@@ -196,22 +189,26 @@ if __name__ == '__main__':
     # options
 
     #keys = arguments['keys']
-
+    if encrypt or decrypt:
+        filename = arguments['<filename>']
+        keyname = arguments['<keyname>']
+        output_file = arguments['<output_file>']
+        #attribute = arguments['<attribute>']
 
     if createkeys:
         #create_keys(key_size, key_name, keys_path)
         create_keys(key_size, key_name, keys_path)
 
     if encrypt:
-        filename = arguments['<filename>']
-        attribute = arguments['<attribute>']
         json_data = yaml.load(open(filename,'r').read())
         #print("calling: %s" % find_key)
-        find_key1(json_data, attribute, 'encrypt')
-        #encrypt_values()
+        modified = traverse_and_modify(json_data, keyname, process_string)
+        write_yaml(output_file, modified)
 
     if decrypt:
-        filename = arguments['filename']
-        pass
-        #decrypt_values()
+        json_data = yaml.load(open(filename,'r').read())
+        modified = traverse_and_modify(json_data, keyname, process_string)
+        write_yaml(output_file, modified)
+
+     
     
