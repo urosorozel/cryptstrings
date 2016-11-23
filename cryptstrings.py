@@ -20,7 +20,9 @@ https://gist.github.com/nvie/f304caf3b4f1ca4c3884
 
 import os
 import sys
-import json,yaml
+import json
+import yaml
+import glob
 from base64 import b64decode
 from distutils.util import strtobool
 # import yaml
@@ -36,7 +38,7 @@ RSA_PRIVATE_KEY = "_private.pem"
 RSA_PUBLIC_KEY = "_public.pem"
 RSA_KEYS_PATH = ".cryptstrings"
 RSA_MAGIC = "MyRsa:"
-RSA_KEY_SIZE=1024
+RSA_KEY_SIZE = 1024
 
 PUBLIC_KEY = os.path.join(RSA_KEYS_PATH, RSA_KEY_NAME + RSA_PUBLIC_KEY)
 PRIVATE_KEY = os.path.join(RSA_KEYS_PATH, RSA_KEY_NAME + RSA_PRIVATE_KEY)
@@ -57,6 +59,18 @@ def overwrite(file_name):
         return True
 
 
+def list_keys():
+    private = glob.glob(RSA_KEYS_PATH + "/*" + RSA_PRIVATE_KEY)
+    public = glob.glob(RSA_KEYS_PATH + "/*" + RSA_PUBLIC_KEY)
+    print("\n### Private keys:")
+    for key in private:
+        print("key: %s" % key)
+
+    print("\n### Public keys:")
+    for key in public:
+        print("key: %s" % key)
+
+
 def ensure_dir(directory):
     print("Creating directory: %s" % directory)
     if not os.path.exists(directory):
@@ -66,9 +80,9 @@ def ensure_dir(directory):
 def write_key(file_name, file_contents, key_type, keys_path):
     file_path = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), keys_path)
-    
+
     ensure_dir(file_path)
-    
+
     if key_type == 'Private':
         file_name = file_name + RSA_PRIVATE_KEY
         print("Writing Private key: %s" % file_name)
@@ -77,7 +91,7 @@ def write_key(file_name, file_contents, key_type, keys_path):
         print("Writing Public key: %s" % file_name)
 
     full_filename = os.path.join(file_path, file_name)
-    print("Output to: %s" %  full_filename)
+    print("Output to: %s" % full_filename)
 
     if overwrite(full_filename):
         f = open(full_filename, 'w')
@@ -85,9 +99,11 @@ def write_key(file_name, file_contents, key_type, keys_path):
         f.close()
         os.chmod(full_filename, 0400)
 
+
 def write_yaml(filename, json):
-    with open( filename, 'w') as outfile:
-      yaml.dump(json, outfile, default_flow_style=False)
+    with open(filename, 'w') as outfile:
+        yaml.dump(json, outfile, default_flow_style=False)
+
 
 def create_keys(key_size=RSA_KEY_SIZE, key_name=RSA_KEY_NAME, keys_path=RSA_KEYS_PATH):
     random_generator = Random.new().read
@@ -103,16 +119,19 @@ def process_string(attribute):
         if not attribute.startswith(RSA_MAGIC):
             attribute = RSA_MAGIC + encrypt_RSA(attribute)
             return attribute
+        else:
+            return attribute
 
     if decrypt:
         if attribute.startswith(RSA_MAGIC):
-            attribute=attribute[len(RSA_MAGIC):]
-            attribute=decrypt_RSA(attribute)
+            attribute = attribute[len(RSA_MAGIC):]
+            attribute = decrypt_RSA(attribute)
             return attribute
 
-
 # https://docs.launchkey.com/developer/encryption/python/python-encryption.html
-def encrypt_RSA(message,public_key=PUBLIC_KEY):
+
+
+def encrypt_RSA(message, public_key=PUBLIC_KEY):
     '''
     param: public_key_loc Path to public key
     param: message String to be encrypted
@@ -124,10 +143,10 @@ def encrypt_RSA(message,public_key=PUBLIC_KEY):
     encrypted = rsakey.encrypt(message)
     return encrypted.encode('base64').replace('\n', '')
 
-
 # https://docs.launchkey.com/developer/encryption/python/python-encryption.html
 
-def decrypt_RSA(package,private_key=PRIVATE_KEY):
+
+def decrypt_RSA(package, private_key=PRIVATE_KEY):
     '''
     param: public_key_loc Path to your private key
     param: package String to be decrypted
@@ -140,7 +159,6 @@ def decrypt_RSA(package,private_key=PRIVATE_KEY):
     return decrypted
 
 
-
 def traverse_and_modify(obj, attribute, callback, key=None):
     if isinstance(obj, dict):
         return {k: traverse_and_modify(v, attribute, callback, key=k) for k, v in obj.items()}
@@ -151,64 +169,55 @@ def traverse_and_modify(obj, attribute, callback, key=None):
 
     if value is None:
         return value
-    
+
     if attribute == key:
         return callback(str(value))
     else:
         return value
 
-
-
-
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='0.1.1rc')
-    print arguments
+
     # sub command
     createkeys = arguments['createkeys']
 
     # options
     if arguments['--key-size']:
-        key_size = int(arguments['--key-size']) 
-    else: key_size = RSA_KEY_SIZE
+        key_size = int(arguments['--key-size'])
+    else:
+        key_size = RSA_KEY_SIZE
 
     if arguments['--key-name']:
-        key_name = arguments['--key-name'] 
-    else: 
+        key_name = arguments['--key-name']
+    else:
         key_name = RSA_KEY_NAME
     if arguments['--keys-path']:
-        keys_path = arguments['--keys-path'] 
-    else: 
+        keys_path = arguments['--keys-path']
+    else:
         keys_path = RSA_KEYS_PATH
-   
-    # sub command
-    encrypt =  arguments['encrypt']
-   
-    # sub command
-    decrypt =  arguments['decrypt']
 
-    # options
+    # sub command
+    listkeys = arguments['listkeys']
+    encrypt = arguments['encrypt']
+    decrypt = arguments['decrypt']
 
-    #keys = arguments['keys']
     if encrypt or decrypt:
         filename = arguments['<filename>']
         keyname = arguments['<keyname>']
         output_file = arguments['<output_file>']
-        #attribute = arguments['<attribute>']
 
     if createkeys:
-        #create_keys(key_size, key_name, keys_path)
         create_keys(key_size, key_name, keys_path)
 
     if encrypt:
-        json_data = yaml.load(open(filename,'r').read())
-        #print("calling: %s" % find_key)
+        json_data = yaml.load(open(filename, 'r').read())
         modified = traverse_and_modify(json_data, keyname, process_string)
         write_yaml(output_file, modified)
 
     if decrypt:
-        json_data = yaml.load(open(filename,'r').read())
+        json_data = yaml.load(open(filename, 'r').read())
         modified = traverse_and_modify(json_data, keyname, process_string)
         write_yaml(output_file, modified)
 
-     
-    
+    if listkeys:
+        list_keys()
