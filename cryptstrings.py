@@ -27,6 +27,7 @@ import os.path
 import json
 import yaml
 import glob
+import re
 from base64 import b64decode
 from distutils.util import strtobool
 from docopt import docopt
@@ -125,6 +126,7 @@ def load_yaml(yaml_path):
         return load
     except yaml.YAMLError as exc:
         print(exc)
+        sys.exit(1)
     except IOError as e:
         print "I/O error({0}): {1} {2}".format(e.errno, e.strerror, yaml_path)
         sys.exit(1)
@@ -173,8 +175,10 @@ def traverse_and_modify(obj, attribute, callback, key=None):
 
     if value is None:
         return value
+    
+    reg = re.search(attribute, key)
 
-    if attribute == key:
+    if reg:
         return callback(str(value))
     else:
         return value
