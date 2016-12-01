@@ -168,6 +168,8 @@ def process_string(attribute):
             attribute = attribute[len(RSA_MAGIC):]
             attribute = decrypt_RSA(attribute)
             return attribute
+        else:
+            return attribute
 
 
 def encrypt_RSA_file(message):
@@ -279,7 +281,6 @@ if __name__ == '__main__':
         else:
             keys_path = RSA_KEYS_PATH
 
-        # os.path.abspath(__file__)
         file_path = os.path.join(expanduser('~'), keys_path)
         ensure_dir(file_path)
         create_keys(key_size, key_name, keys_path)
@@ -318,7 +319,6 @@ if __name__ == '__main__':
                     print(
                         "!!! WARNING !!!\nAll input files have to have a suffix: '%s' to be able filter them with gitignore etc.\n!!! WARNING !!!" % DECRYPT_SUFF)
                     sys.exit(1)
-                # encrypt_file(file)
                 file_data = load_file(file)
                 modified = encrypt_RSA_files(
                     file[:-len(DECRYPT_SUFF)], file_data)
@@ -328,7 +328,6 @@ if __name__ == '__main__':
                 PRIVATE_KEY = arguments['--private-key']
             check_file(PRIVATE_KEY)
             for file in input_file:
-                # decrypt_file(file)
                 modified = decrypt_RSA_files(file)
                 write_file(file + DECRYPT_SUFF, modified)
 
