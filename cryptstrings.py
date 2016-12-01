@@ -29,7 +29,6 @@ import os
 import sys
 import os.path
 from os.path import expanduser
-from sh import ErrorReturnCode, openssl
 import json
 import yaml
 import glob
@@ -39,7 +38,7 @@ from distutils.util import strtobool
 from docopt import docopt
 from Crypto import Random
 from Crypto.PublicKey import RSA
-from Crypto.Cipher import AES,PKCS1_OAEP
+from Crypto.Cipher import AES, PKCS1_OAEP
 
 # PyCryptodome
 # Default values
@@ -50,7 +49,7 @@ RSA_KEYS = ".cryptstrings"
 RSA_KEYS_PATH = os.path.join(expanduser('~'), RSA_KEYS)
 RSA_MAGIC = "RSA:"
 RSA_KEY_SIZE = 1024
-DECRYPT_SUFF="_decrypted"
+DECRYPT_SUFF = "_decrypted"
 
 PRIVATE_KEY = os.path.join(RSA_KEYS_PATH, RSA_KEY_NAME + RSA_PRIVATE_KEY)
 PUBLIC_KEY = os.path.join(RSA_KEYS_PATH, RSA_KEY_NAME + RSA_PUBLIC_KEY)
@@ -170,21 +169,6 @@ def process_string(attribute):
             attribute = decrypt_RSA(attribute)
             return attribute
 
-def encrypt_file(filename):
-    public_key = PUBLIC_KEY
-    enc_file = filename[:-len(DECRYPT_SUFF)]
-    print enc_file
-    with open(filename, 'rb') as plain_file:
-
-        openssl('rsautl', '-encrypt', '-inkey', PUBLIC_KEY, '-pubin', _in=plain_file, _out=enc_file)
-    return True
-
-def decrypt_file(filename):
-    private_key = PRIVATE_KEY
-    plain_file = filename + DECRYPT_SUFF
-    with open(filename, 'rb') as enc_file:
-        openssl('enc', '-aes-256-cbc','-d', '-pass', ('file:%s' % PRIVATE_KEY), _in=enc_file,_out=plain_file)
-    return True
 
 def encrypt_RSA_file(message):
     public_key = PUBLIC_KEY
@@ -193,6 +177,7 @@ def encrypt_RSA_file(message):
     rsakey = PKCS1_OAEP.new(rsakey)
     encrypted = rsakey.encrypt(message)
     return encrypted.encode('base64')
+
 
 def encrypt_RSA_files(filename, data):
     public_key = PUBLIC_KEY
@@ -204,27 +189,29 @@ def encrypt_RSA_files(filename, data):
         cipher_rsa = PKCS1_OAEP.new(key)
         output_file.write(cipher_rsa.encrypt(session_key))
         cipher_aes = AES.new(session_key, AES.MODE_EAX)
-        ciphertext,tag = cipher_aes.encrypt_and_digest(data)
+        ciphertext, tag = cipher_aes.encrypt_and_digest(data)
 
         output_file.write(cipher_aes.nonce)
         output_file.write(tag)
         output_file.write(ciphertext)
+
 
 def decrypt_RSA_files(filename):
     private_key = PRIVATE_KEY
     print private_key
     with open(filename, 'rb') as fobj:
         private_key = RSA.import_key(open(private_key).read())
-        enc_session_key, nonce, tag, ciphertext = [ fobj.read(x) 
-                                            for x in (private_key.size_in_bytes(), 
-                                            16, 16, -1) ]
- 
+        enc_session_key, nonce, tag, ciphertext = [fobj.read(x)
+                                                   for x in (private_key.size_in_bytes(),
+                                                             16, 16, -1)]
+
         cipher_rsa = PKCS1_OAEP.new(private_key)
         session_key = cipher_rsa.decrypt(enc_session_key)
- 
+
         cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
         data = cipher_aes.decrypt_and_verify(ciphertext, tag)
     return data
+
 
 def encrypt_RSA(message):
     public_key = PUBLIC_KEY
@@ -264,8 +251,8 @@ def traverse_and_modify(obj, attribute, callback, key=None):
 
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='1.0.1rc')
-    # sub command
-    print(arguments)
+    
+
     createkeys = arguments['createkeys']
     listkeys = arguments['listkeys']
     file = arguments['file']
@@ -277,8 +264,6 @@ if __name__ == '__main__':
         input_file = arguments['<input_file>']
         input_yaml = arguments['<input_yaml>']
         keyname = arguments['<keyname>']
-        #output_file = arguments['<output_file>']
-
 
     if createkeys:
         # options
@@ -305,7 +290,8 @@ if __name__ == '__main__':
     if string:
         if encrypt:
             if not input_yaml.endswith(DECRYPT_SUFF):
-                print("!!! WARNING !!!\nAll input files have to have a suffix: '%s' to be able filter them with gitignore etc.\n!!! WARNING !!!" % DECRYPT_SUFF)
+                print(
+                    "!!! WARNING !!!\nAll input files have to have a suffix: '%s' to be able filter them with gitignore etc.\n!!! WARNING !!!" % DECRYPT_SUFF)
                 sys.exit(1)
             if arguments['--public-key']:
                 PUBLIC_KEY = arguments['--public-key']
@@ -332,19 +318,20 @@ if __name__ == '__main__':
             check_file(PUBLIC_KEY)
             for file in input_file:
                 if not file.endswith(DECRYPT_SUFF):
-                    print("!!! WARNING !!!\nAll input files have to have a suffix: '%s' to be able filter them with gitignore etc.\n!!! WARNING !!!" % DECRYPT_SUFF)
+                    print(
+                        "!!! WARNING !!!\nAll input files have to have a suffix: '%s' to be able filter them with gitignore etc.\n!!! WARNING !!!" % DECRYPT_SUFF)
                     sys.exit(1)
-                #encrypt_file(file)
+                # encrypt_file(file)
                 file_data = load_file(file)
-                modified = encrypt_RSA_files(file[:-len(DECRYPT_SUFF)], file_data)
-
+                modified = encrypt_RSA_files(
+                    file[:-len(DECRYPT_SUFF)], file_data)
 
         if decrypt:
             if arguments['--private-key']:
                 PRIVATE_KEY = arguments['--private-key']
             check_file(PRIVATE_KEY)
             for file in input_file:
-                #decrypt_file(file)
+                # decrypt_file(file)
                 modified = decrypt_RSA_files(file)
                 write_file(file + DECRYPT_SUFF, modified)
 
