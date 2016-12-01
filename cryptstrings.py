@@ -181,7 +181,6 @@ def encrypt_RSA_file(message):
 
 def encrypt_RSA_files(filename, data):
     public_key = PUBLIC_KEY
-    print public_key
     with open(filename, 'w') as output_file:
         key = open(public_key, "r").read()
         session_key = Random.get_random_bytes(16)
@@ -198,7 +197,6 @@ def encrypt_RSA_files(filename, data):
 
 def decrypt_RSA_files(filename):
     private_key = PRIVATE_KEY
-    print private_key
     with open(filename, 'rb') as fobj:
         private_key = RSA.import_key(open(private_key).read())
         enc_session_key, nonce, tag, ciphertext = [fobj.read(x)
@@ -251,7 +249,6 @@ def traverse_and_modify(obj, attribute, callback, key=None):
 
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='1.0.1rc')
-    
 
     createkeys = arguments['createkeys']
     listkeys = arguments['listkeys']
