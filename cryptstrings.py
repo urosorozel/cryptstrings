@@ -287,17 +287,13 @@ if __name__ == '__main__':
 
     if string:
         if encrypt:
-            if not input_yaml.endswith(DECRYPT_SUFF):
-                print(
-                    "!!! WARNING !!!\nAll input files have to have a suffix: '%s' to be able filter them with gitignore etc.\n!!! WARNING !!!" % DECRYPT_SUFF)
-                sys.exit(1)
             if arguments['--public-key']:
                 PUBLIC_KEY = arguments['--public-key']
             check_file(PUBLIC_KEY)
             json_data = load_yaml(input_yaml)
             for key in keyname:
                 json_data = traverse_and_modify(json_data, key, process_string)
-            write_yaml(input_yaml[:-len(DECRYPT_SUFF)], json_data)
+            write_yaml(input_yaml.replace(DECRYPT_SUFF, ''), json_data)
 
         if decrypt:
             if arguments['--private-key']:
@@ -315,10 +311,6 @@ if __name__ == '__main__':
                 PUBLIC_KEY = arguments['--public-key']
             check_file(PUBLIC_KEY)
             for file in input_file:
-                if not file.endswith(DECRYPT_SUFF):
-                    print(
-                        "!!! WARNING !!!\nAll input files have to have a suffix: '%s' to be able filter them with gitignore etc.\n!!! WARNING !!!" % DECRYPT_SUFF)
-                    sys.exit(1)
                 file_data = load_file(file)
                 modified = encrypt_RSA_files(
                     file[:-len(DECRYPT_SUFF)], file_data)
