@@ -188,10 +188,11 @@ def encrypt_RSA_files(filename, data):
         session_key = Random.get_random_bytes(16)
         key = RSA.importKey(key)
         cipher_rsa = PKCS1_OAEP.new(key)
-        output_file.write(cipher_rsa.encrypt(session_key))
         cipher_aes = AES.new(session_key, AES.MODE_EAX)
         ciphertext, tag = cipher_aes.encrypt_and_digest(data)
 
+        output_file.write(RSA_MAGIC)
+        output_file.write(cipher_rsa.encrypt(session_key))
         output_file.write(cipher_aes.nonce)
         output_file.write(tag)
         output_file.write(ciphertext)
@@ -201,6 +202,8 @@ def decrypt_RSA_files(filename):
     private_key = PRIVATE_KEY
     with open(filename, 'rb') as fobj:
         private_key = RSA.import_key(open(private_key).read())
+        if fobj.read(len(RSA_MAGIC)) != RSA_MAGIC:
+            print("Attempted to decrypt {}, but it had no RSA_MAGIC. I don't think it's encrypted".format(filename)) 
         enc_session_key, nonce, tag, ciphertext = [fobj.read(x)
                                                    for x in (private_key.size_in_bytes(),
                                                              16, 16, -1)]
@@ -312,8 +315,10 @@ if __name__ == '__main__':
             check_file(PUBLIC_KEY)
             for file in input_file:
                 file_data = load_file(file)
-                modified = encrypt_RSA_files(
-                    file[:-len(DECRYPT_SUFF)], file_data)
+                if file_data.startswith(RSA_MAGIC):
+                    print("file {} was already encrypted, skipping".format(file))
+                else:
+                    modified = encrypt_RSA_files(file, file_data)
 
         if decrypt:
             if arguments['--private-key']:
