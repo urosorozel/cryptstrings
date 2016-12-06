@@ -33,7 +33,8 @@ import json
 import ruamel.yaml as yaml
 import glob
 import re
-from base64 import b64decode
+from base64 import b64decode, b64encode
+from StringIO import StringIO
 from distutils.util import strtobool
 from docopt import docopt
 from Crypto import Random
@@ -157,12 +158,12 @@ def load_file(file_path):
 
 def process_string(key, value, attribute):
     reg = re.search(attribute, key)
-
+    value = str(value)
     if reg:
 
         if encrypt:
             if not value.startswith(RSA_MAGIC):
-                value = RSA_MAGIC + encrypt_RSA(value)
+                value = RSA_MAGIC + s_encrypt_RSA(value)
                 return value
             else:
                 return value
@@ -170,7 +171,7 @@ def process_string(key, value, attribute):
         if decrypt:
             if value.startswith(RSA_MAGIC):
                 value = value[len(RSA_MAGIC):]
-                value = decrypt_RSA(value)
+                value = s_decrypt_RSA(value)
                 return value
             else:
                 return value
@@ -196,12 +197,43 @@ def encrypt_RSA_files(filename, data):
         cipher_rsa = PKCS1_OAEP.new(key)
         cipher_aes = AES.new(session_key, AES.MODE_EAX)
         ciphertext, tag = cipher_aes.encrypt_and_digest(data)
-
         output_file.write(RSA_MAGIC)
+        output = RSA_MAGIC
         output_file.write(cipher_rsa.encrypt(session_key))
         output_file.write(cipher_aes.nonce)
         output_file.write(tag)
         output_file.write(ciphertext)
+
+
+def s_encrypt_RSA(message):
+    public_key = PUBLIC_KEY
+    key = open(public_key, "r").read()
+    session_key = Random.get_random_bytes(16)
+    key = RSA.importKey(key)
+    cipher_rsa = PKCS1_OAEP.new(key)
+    cipher_aes = AES.new(session_key, AES.MODE_EAX)
+    ciphertext, tag = cipher_aes.encrypt_and_digest(message)
+    session_key = cipher_rsa.encrypt(session_key)
+    aes_cipher = cipher_aes.nonce
+    return b64encode(session_key + aes_cipher + tag + ciphertext)
+
+
+def s_decrypt_RSA(message):
+    message = b64decode(message)
+    #print("de: %s" % message)
+    private_key = PRIVATE_KEY
+    private_key = RSA.import_key(open(private_key).read())
+    data = StringIO(message)
+    enc_session_key, nonce, tag, ciphertext = [data.read(x)
+                                               for x in (private_key.size_in_bytes(),
+                                                         16, 16, -1)]
+
+    cipher_rsa = PKCS1_OAEP.new(private_key)
+    session_key = cipher_rsa.decrypt(enc_session_key)
+
+    cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
+    data = cipher_aes.decrypt_and_verify(ciphertext, tag)
+    return data
 
 
 def decrypt_RSA_files(filename):
@@ -221,24 +253,6 @@ def decrypt_RSA_files(filename):
         cipher_aes = AES.new(session_key, AES.MODE_EAX, nonce)
         data = cipher_aes.decrypt_and_verify(ciphertext, tag)
     return data
-
-
-def encrypt_RSA(message):
-    public_key = PUBLIC_KEY
-    key = open(public_key, "r").read()
-    rsakey = RSA.importKey(key)
-    rsakey = PKCS1_OAEP.new(rsakey)
-    encrypted = rsakey.encrypt(message)
-    return encrypted.encode('base64').replace('\n', '')
-
-
-def decrypt_RSA(package):
-    private_key = PRIVATE_KEY
-    key = open(private_key, "r").read()
-    rsakey = RSA.importKey(key)
-    rsakey = PKCS1_OAEP.new(rsakey)
-    decrypted = rsakey.decrypt(b64decode(package))
-    return decrypted
 
 
 def traverse_inner(data, attribute, modfn):
