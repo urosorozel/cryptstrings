@@ -30,7 +30,7 @@ import sys
 import os.path
 from os.path import expanduser
 import json
-import yaml
+import ruamel.yaml as yaml
 import glob
 import re
 from base64 import b64decode
@@ -108,7 +108,7 @@ def write_key(file_name, file_contents, key_type, keys_path):
 
 def write_yaml(filename, json):
     with open(filename, 'w') as outfile:
-        yaml.dump(json, outfile, default_flow_style=False)
+        yaml.dump(json, outfile, Dumper=yaml.RoundTripDumper)
 
 
 def write_file(filename, data):
@@ -135,7 +135,7 @@ def check_file(file_path):
 
 def load_yaml(yaml_path):
     try:
-        load = yaml.load(open(yaml_path, 'r').read())
+        load = yaml.load(open(yaml_path, 'r'), Loader=yaml.RoundTripLoader)
         return load
     except yaml.YAMLError as exc:
         print(exc)
@@ -155,21 +155,27 @@ def load_file(file_path):
         sys.exit(1)
 
 
-def process_string(attribute):
-    if encrypt:
-        if not attribute.startswith(RSA_MAGIC):
-            attribute = RSA_MAGIC + encrypt_RSA(attribute)
-            return attribute
-        else:
-            return attribute
+def process_string(key, value, attribute):
+    reg = re.search(attribute, key)
 
-    if decrypt:
-        if attribute.startswith(RSA_MAGIC):
-            attribute = attribute[len(RSA_MAGIC):]
-            attribute = decrypt_RSA(attribute)
-            return attribute
-        else:
-            return attribute
+    if reg:
+
+        if encrypt:
+            if not value.startswith(RSA_MAGIC):
+                value = RSA_MAGIC + encrypt_RSA(value)
+                return value
+            else:
+                return value
+
+        if decrypt:
+            if value.startswith(RSA_MAGIC):
+                value = value[len(RSA_MAGIC):]
+                value = decrypt_RSA(value)
+                return value
+            else:
+                return value
+    else:
+        return value
 
 
 def encrypt_RSA_file(message):
@@ -203,7 +209,8 @@ def decrypt_RSA_files(filename):
     with open(filename, 'rb') as fobj:
         private_key = RSA.import_key(open(private_key).read())
         if fobj.read(len(RSA_MAGIC)) != RSA_MAGIC:
-            print("Attempted to decrypt {}, but it had no RSA_MAGIC. I don't think it's encrypted".format(filename)) 
+            print("Attempted to decrypt {}, but it had no RSA_MAGIC. I don't think it's encrypted".format(
+                filename))
         enc_session_key, nonce, tag, ciphertext = [fobj.read(x)
                                                    for x in (private_key.size_in_bytes(),
                                                              16, 16, -1)]
@@ -234,23 +241,18 @@ def decrypt_RSA(package):
     return decrypted
 
 
-def traverse_and_modify(obj, attribute, callback, key=None):
-    if isinstance(obj, dict):
-        return {k: traverse_and_modify(v, attribute, callback, key=k) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [traverse_and_modify(elem, attribute, callback, key) for elem in obj]
-    else:
-        value = obj
+def traverse_inner(data, attribute, modfn):
+    if isinstance(data, dict):
+        for k, v in data.iteritems():
+            if isinstance(v, (dict, list, tuple, yaml.comments.CommentedMap)):
+                traverse_inner(v, attribute, modfn)
+            else:
+                data[k] = modfn(k, v, attribute)
+    elif isinstance(data, (list, tuple, yaml.comments.CommentedSeq)):
+        for item in data:
+            traverse_inner(item, attribute, modfn)
+    return data
 
-    if value is None:
-        return value
-
-    reg = re.search(attribute, key)
-
-    if reg:
-        return callback(str(value))
-    else:
-        return value
 
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='1.0.1rc')
@@ -295,7 +297,7 @@ if __name__ == '__main__':
             check_file(PUBLIC_KEY)
             json_data = load_yaml(input_yaml)
             for key in keyname:
-                json_data = traverse_and_modify(json_data, key, process_string)
+                json_data = traverse_inner(json_data, key, process_string)
             write_yaml(input_yaml.replace(DECRYPT_SUFF, ''), json_data)
 
         if decrypt:
@@ -305,7 +307,7 @@ if __name__ == '__main__':
             json_data = load_yaml(input_yaml)
 
             for key in keyname:
-                json_data = traverse_and_modify(json_data, key, process_string)
+                json_data = traverse_inner(json_data, key, process_string)
             write_yaml(input_yaml + DECRYPT_SUFF, json_data)
 
     if file:
@@ -316,7 +318,8 @@ if __name__ == '__main__':
             for file in input_file:
                 file_data = load_file(file)
                 if file_data.startswith(RSA_MAGIC):
-                    print("file {} was already encrypted, skipping".format(file))
+                    print(
+                        "file {} was already encrypted, skipping".format(file))
                 else:
                     modified = encrypt_RSA_files(file, file_data)
 
